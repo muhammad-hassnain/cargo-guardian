@@ -1,5 +1,6 @@
 *
 
 !.gitignore
-!.getVulnerabilityInfo.py
-!.protector.py
+!getVulnerabilityInfo.py
+!protector.py
+!LICENSE
