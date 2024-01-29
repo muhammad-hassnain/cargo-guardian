@@ -3,4 +3,5 @@
 !.gitignore
 !getVulnerabilityInfo.py
 !protector.py
+!.README.md
 !LICENSE
