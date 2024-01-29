@@ -1,8 +1,9 @@
 import toml
 import os
-import yaml
+import argparse
 import pandas as pd
 import re
+import getVulnerabilityInfo
 
 def get_crate_dependencies(cargo_toml_directory):
     """
@@ -22,26 +23,18 @@ def get_crate_dependencies(cargo_toml_directory):
     dependencies = cargo_toml.get("dependencies", {})
     # print(type(dependencies))
     return dependencies
-    # return {crate: details.get("version", "Unknown") for crate, details in dependencies.items()}
 
 def dictionary_maker(doc):
     lines = doc.split('\n')
-    # print(lines)
     codex = {}
     for line in lines:
-        # print(line)
         if line!="":
             temp = line.split(":")
-            # print(temp)
             if len(temp) == 2: # no nested
-                # print('here' , temp[0] , temp[1])
                 codex[temp[0]] = temp[1]
             elif(len(temp) > 2): # nested dict
                 outer_key = temp[0]
-    
-                # Initialize the inner dictionary
                 inner_dict = {}
-                
                 # Process the list to extract key-value pairs for the inner dictionary
                 # The key-value pairs start from index 1 and alternate thereafter
                 for i in range(1, len(temp), 2):  # Start from index 1 and skip every other element for keys
@@ -52,37 +45,12 @@ def dictionary_maker(doc):
                 
                 # Assemble the outer dictionary
                 codex[outer_key] = inner_dict
-                # print(temp)
-                # vessel = temp[1:]
-                # inner_elements_cleaned = vessel.replace("{", "").replace("}", "").split("',")
-                # inner_dict = {vessel[i]:vessel[i+1] for i in range(0,len(vessel)-1,2)}
-                # print(vessel)
-                # print(inner_dict) 
-                # codex[temp[0]] = inner_dict
     return codex
     
 def searcher(crate, version, contents):
     """
     Search for a crate with the given name and version in the data file.
     """
-    # with open(data_file, 'r') as file:
-    #     # Split the file into separate documents
-    #     documents = file.read().split('---')
-    #     # print(documents[0])
-    #     for doc in documents:
-    #         # print(doc)
-    #         if doc.strip():  # Check if the document is not empty
-    #             # print(doc)
-    #             information = dictionary_maker(doc)
-    #             print(information["package"])
-    #             # temp = information["package"]
-    #             # print(temp["name'"])
-    #             # if (crate == information["package"]["name'"]):
-    #                 # print("found")
-    #             break 
-    # return None  # No matching vulnerability found
-    # read the csv file as a dataframe
-    # print(contents["package_name"])
     target = contents[contents["package_name"] == crate]
     # print(target)
     if target.empty:
@@ -98,29 +66,25 @@ def searcher(crate, version, contents):
         patched_version = match.group(0)
         # print(patched_version)
         if version < patched_version:
-            print('sad')
+            # print('sad')
             return patched_version
     return None
 
-
-        # print("-----")
-        # print( target["unaffected"])
-    # print(crate, contents["package_name"])
-    # for name in contents["package_name"]:
-    #     crate_name = name.split("(")[0]
-    #     if(crate == crate_name):
-    #         print("in")  
-            
 def update_cargo_dependencies(cargo_toml_path, new_versions):
     """
-    Updates the dependencies in a Cargo.toml file based on a given dictionary.
+    Updates the dependencies in a Cargo.toml file based on a given dictionary,
+    and prints a message for each updated dependency.
 
     :param cargo_toml_path: Path to the Cargo.toml file.
     :param new_versions: Dictionary with dependency names as keys and new versions as values.
     """
 
-    cargo_toml_path = os.path.join(cargo_toml_directory, "Cargo.toml")
+    # It seems like there's a redundancy in the provided code snippet. 
+    # The `cargo_toml_path` parameter is already expected to be the full path to the Cargo.toml file.
+    # Thus, the line below is unnecessary and potentially incorrect since `cargo_toml_directory` is not defined in this scope.
+    # cargo_toml_path = os.path.join(cargo_toml_directory, "Cargo.toml")
 
+    cargo_toml_path = os.path.join(cargo_toml_path, "Cargo.toml")
     # Read the Cargo.toml file
     with open(cargo_toml_path, 'r') as file:
         cargo_data = toml.load(file)
@@ -129,34 +93,58 @@ def update_cargo_dependencies(cargo_toml_path, new_versions):
     if 'dependencies' in cargo_data:
         for dep, new_version in new_versions.items():
             if dep in cargo_data['dependencies']:
-                cargo_data['dependencies'][dep] = new_version
+                current_version = cargo_data['dependencies'][dep]
+                if current_version != new_version:
+                    print(f"{dep} found in rust sec, you are using a vulnerable version {current_version}. Updating the version to {new_version}.")
+                    cargo_data['dependencies'][dep] = new_version
 
     # Write the updated Cargo.toml file back
     with open(cargo_toml_path, 'w') as file:
         toml.dump(cargo_data, file)
 
 
-# Example usage:
-cargo_toml_directory = '/Users/hassnain/Desktop/Research/cargo-guardian/fun'  # Replace with the actual directory containing Cargo.toml
-dependencies = get_crate_dependencies(cargo_toml_directory)
-# print(dependencies)
-# print(searcher())
-contents = pd.read_csv('results.csv' , on_bad_lines="skip")
-contents['package_name'] = contents['package_name'].str.replace(r'\(crates\.io\)', '', regex=True)
-fixes = {}
-update = False
-for k,v in dependencies.items():
-    print(k,v)
-    version = searcher(k,v, contents)
-    # print(version)
-    if version != None:
-        fixes[k] = version
-        update = True
-    else:
-        fixes[k] = v
-# print(fies)
-print(fixes)
 
-if update:
-    # requires update
-    update_cargo_dependencies(cargo_toml_directory, fixes)
+if __name__ == "__main__":
+    # Setup argument parser
+    parser = argparse.ArgumentParser(description="Update Cargo.toml dependencies based on vulnerability checks.")
+    parser.add_argument("-U", "--update", help="Run the getUpdate function to update vulnerability information", action="store_true")
+    parser.add_argument("path", help="Path to the directory containing Cargo.toml", type=str)
+    
+    args = parser.parse_args()
+    
+    # Use the provided path
+    cargo_toml_directory = args.path
+    
+    # Ensure the path exists
+    if not os.path.exists(cargo_toml_directory):
+        print(f"The directory {cargo_toml_directory} does not exist.")
+        exit()
+    
+    # Check for the existence of vulnerabilityInfo.csv; if not found, run getUpdate()
+    results_csv_path = 'vulnerabilityInfo.csv'
+    if not os.path.isfile(results_csv_path) or args.update:
+        print("vulnerabilities infroamtion file not found or update requested. Updating vulnerability information...")
+        getVulnerabilityInfo.getUpdate()
+        
+    # Assuming getUpdate() creates or updates vulnerabilityInfo.csv, proceed with reading it
+    try:
+        contents = pd.read_csv(results_csv_path, on_bad_lines="skip")
+        contents['package_name'] = contents['package_name'].str.replace(r'\(crates\.io\)', '', regex=True)
+    except FileNotFoundError:
+        print("Unable to find or create vulnerabilityInfo.csv. Exiting.")
+        exit()
+    
+    dependencies = get_crate_dependencies(cargo_toml_directory)
+    
+    fixes = {}
+    update_needed = False
+    for k, v in dependencies.items():
+        version = searcher(k, v, contents)
+        if version is not None:
+            fixes[k] = version
+            update_needed = True
+        else:
+            fixes[k] = v
+
+    if update_needed:
+        update_cargo_dependencies(cargo_toml_directory, fixes)
